@@ -42,21 +42,21 @@ type EntryStore interface {
 	DeleteRange(min, max uint64) error
 }
 
-type InMemoryStore struct {
+type InMemoryEntryStore struct {
 	mu sync.RWMutex
 
 	entries []*Entry
 }
 
-func NewInMemoryStore() *InMemoryStore {
-	return &InMemoryStore{
+func NewInMemoryEntryStore() *InMemoryEntryStore {
+	return &InMemoryEntryStore{
 		entries: []*Entry{
 			{Index: 0, Term: 0, Date: nil},
 		},
 	}
 }
 
-func (s *InMemoryStore) FirstIndex() (uint64, error) {
+func (s *InMemoryEntryStore) FirstIndex() (uint64, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -64,7 +64,7 @@ func (s *InMemoryStore) FirstIndex() (uint64, error) {
 	return s.entries[0].Index, nil
 }
 
-func (s *InMemoryStore) LastIndex() (uint64, error) {
+func (s *InMemoryEntryStore) LastIndex() (uint64, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -72,7 +72,7 @@ func (s *InMemoryStore) LastIndex() (uint64, error) {
 	return s.entries[n-1].Index, nil
 }
 
-func (s *InMemoryStore) FirstEntry() (*Entry, error) {
+func (s *InMemoryEntryStore) FirstEntry() (*Entry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -82,7 +82,7 @@ func (s *InMemoryStore) FirstEntry() (*Entry, error) {
 	return s.entries[1], nil
 }
 
-func (s *InMemoryStore) LastEntry() (*Entry, error) {
+func (s *InMemoryEntryStore) LastEntry() (*Entry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -93,7 +93,7 @@ func (s *InMemoryStore) LastEntry() (*Entry, error) {
 	return s.entries[entriesLen-1], nil
 }
 
-func (s *InMemoryStore) GetEntry(index uint64) (*Entry, error) {
+func (s *InMemoryEntryStore) GetEntry(index uint64) (*Entry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -105,11 +105,11 @@ func (s *InMemoryStore) GetEntry(index uint64) (*Entry, error) {
 	return s.entries[index], nil
 }
 
-func (s *InMemoryStore) StoreEntry(entry *Entry) error {
+func (s *InMemoryEntryStore) StoreEntry(entry *Entry) error {
 	return s.StoreEntries([]*Entry{entry})
 }
 
-func (s *InMemoryStore) StoreEntries(entries []*Entry) error {
+func (s *InMemoryEntryStore) StoreEntries(entries []*Entry) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -117,7 +117,7 @@ func (s *InMemoryStore) StoreEntries(entries []*Entry) error {
 	return nil
 }
 
-func (s *InMemoryStore) DeleteRange(min, max uint64) error {
+func (s *InMemoryEntryStore) DeleteRange(min, max uint64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
