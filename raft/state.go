@@ -9,8 +9,12 @@ type State uint32
 
 const (
 	Candidate State = iota + 1
+
 	Follower
+
 	Leader
+
+	Shutdown
 )
 
 func (s State) String() string {
@@ -21,6 +25,8 @@ func (s State) String() string {
 		return "Follower"
 	case Leader:
 		return "Leader"
+	case Shutdown:
+		return "Shutdown"
 	default:
 		return "Unknown"
 	}
@@ -43,7 +49,7 @@ type serverState struct {
 }
 
 func (s *serverState) me() ServerID {
-	return s.server.getServerID()
+	return s.server.ServerID
 }
 
 func (s *serverState) getLeaderID() ServerID {
@@ -167,17 +173,4 @@ func (p *followerLogState) setNextAndMatchIndex(id ServerID, nextIndex, matchInd
 
 	p.nextIndex[id] = nextIndex
 	p.matchIndex[id] = matchIndex
-}
-
-func (p *followerLogState) getBiggerOrEqualMatchNum(index uint64) int {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	cnt := 0
-	for _, matchIndex := range p.matchIndex {
-		if matchIndex >= index {
-			cnt++
-		}
-	}
-	return cnt
 }

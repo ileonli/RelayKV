@@ -57,7 +57,7 @@ func (t *RPCTransport) Consume() <-chan *RPC {
 func (t *RPCTransport) SendRequestVote(
 	server Server, req *RequestVoteRequest, resp *RequestVoteResponse) error {
 
-	client, err := rpc.Dial("tcp", string(server.getServerAddress()))
+	client, err := rpc.Dial("tcp", string(server.ServerAddress))
 	if err != nil {
 		return err
 	}
@@ -72,7 +72,7 @@ func (t *RPCTransport) SendRequestVote(
 func (t *RPCTransport) SendAppendEntries(
 	server Server, req *AppendEntriesRequest, resp *AppendEntriesResponse) error {
 
-	client, err := rpc.Dial("tcp", string(server.getServerAddress()))
+	client, err := rpc.Dial("tcp", string(server.ServerAddress))
 	if err != nil {
 		return err
 	}
