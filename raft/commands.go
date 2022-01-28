@@ -6,7 +6,7 @@ package raft
 
 type RequestVoteRequest struct {
 	Term        uint64
-	CandidateId int
+	CandidateId ServerID
 
 	LastLogIndex uint64
 	LastLogTerm  uint64
@@ -23,7 +23,7 @@ type RequestVoteResponse struct {
 
 type AppendEntriesRequest struct {
 	Term     uint64
-	LeaderId int
+	LeaderId ServerID
 
 	PrevLogIndex uint64
 	PrevLogTerm  uint64

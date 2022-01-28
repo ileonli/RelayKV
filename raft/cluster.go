@@ -40,8 +40,12 @@ func (c *Cluster) at(index uint64) Server {
 	return (*c)[index]
 }
 
-func (c *Cluster) visit(f func(s Server)) {
+func (c *Cluster) visit(f func(s Server), sync bool) {
 	for i := uint64(0); i < c.size(); i++ {
-		f(c.at(i))
+		if sync {
+			go f(c.at(i))
+		} else {
+			f(c.at(i))
+		}
 	}
 }
