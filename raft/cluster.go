@@ -13,8 +13,6 @@ const (
 	NoneAddress ServerAddress = ""
 )
 
-type Cluster []Server
-
 type Server struct {
 	ServerID
 	ServerAddress
@@ -25,10 +23,25 @@ func (s Server) String() string {
 		s.ServerID, s.ServerAddress)
 }
 
-func (s *Server) getServerID() ServerID {
-	return s.ServerID
+type Cluster []Server
+
+func (c *Cluster) size() uint64 {
+	return uint64(len(*c))
 }
 
-func (s *Server) getServerAddress() ServerAddress {
-	return s.ServerAddress
+func (c *Cluster) quorum() uint64 {
+	return uint64(len(*c))
+}
+
+func (c *Cluster) at(index uint64) Server {
+	if index > c.size() {
+		panic("index out of bound of the cluster")
+	}
+	return (*c)[index]
+}
+
+func (c *Cluster) visit(f func(s Server)) {
+	for i := uint64(0); i < c.size(); i++ {
+		f(c.at(i))
+	}
 }
