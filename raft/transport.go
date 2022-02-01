@@ -1,9 +1,12 @@
 package raft
 
 import (
-	"log"
+	"RelayKV/raft/pb"
+	"context"
+	"github.com/shimingyah/pool"
+	"google.golang.org/grpc"
 	"net"
-	"net/rpc"
+	"sync"
 )
 
 type RPC struct {
@@ -19,33 +22,37 @@ func (r *RPC) Respond() {
 type Transport interface {
 	Consume() <-chan *RPC
 
-	SendRequestVote(server Server, req *RequestVoteRequest, resp *RequestVoteResponse) error
+	SendRequestVote(server Server, req *pb.RequestVoteRequest) (*pb.RequestVoteResponse, error)
 
-	SendAppendEntries(server Server, req *AppendEntriesRequest, resp *AppendEntriesResponse) error
+	SendAppendEntries(server Server, req *pb.AppendEntriesRequest) (*pb.AppendEntriesResponse, error)
 }
 
 type RPCTransport struct {
-	rpcCh  chan *RPC
-	logger Logger
+	pb.UnimplementedRaftServer
+
+	clientPool sync.Map
+	rpcCh      chan *RPC
+	logger     Logger
 }
 
-func NewHttpTransport(address ServerAddress, logger Logger) *RPCTransport {
-	transport := &RPCTransport{rpcCh: make(chan *RPC, 1), logger: logger}
+func NewRPCTransport(address ServerAddress, logger Logger) *RPCTransport {
+	transport := &RPCTransport{
+		rpcCh:  make(chan *RPC, 1),
+		logger: logger,
+	}
+
 	go func() {
-		err := rpc.Register(transport)
+		server, err := net.Listen("tcp", string(address))
 		if err != nil {
 			panic(err)
 		}
-		listener, err := net.Listen("tcp", string(address))
-		if err != nil {
-			log.Fatal("ListenTCP error:", err)
-		}
+		var rpcServer = grpc.NewServer()
+		pb.RegisterRaftServer(rpcServer, transport)
 
-		conn, err := listener.Accept()
+		err = rpcServer.Serve(server)
 		if err != nil {
-			log.Fatal("Accept error:", err)
+			panic(err)
 		}
-		rpc.ServeConn(conn)
 	}()
 	return transport
 }
@@ -55,33 +62,55 @@ func (t *RPCTransport) Consume() <-chan *RPC {
 }
 
 func (t *RPCTransport) SendRequestVote(
-	server Server, req *RequestVoteRequest, resp *RequestVoteResponse) error {
+	server Server, req *pb.RequestVoteRequest) (*pb.RequestVoteResponse, error) {
 
-	client, err := rpc.Dial("tcp", string(server.ServerAddress))
-	if err != nil {
-		return err
+	clientPool, ok := t.clientPool.Load(string(server.ServerAddress))
+	if !ok {
+		p, err := pool.New(string(server.ServerAddress), pool.DefaultOptions)
+		if err != nil {
+			t.logger.Fatalf("failed to new pool: %v", err)
+		}
+		t.clientPool.Store(string(server.ServerAddress), p)
+		clientPool = p
 	}
+	conn, err := clientPool.(pool.Pool).Get()
+	if err != nil {
+		t.logger.Fatalf("failed to get conn: %v", err)
+	}
+	defer conn.Close()
 
-	err = client.Call("RPCTransport.RequestVote", req, resp)
+	client := pb.NewRaftClient(conn.Value())
+	response, err := client.RequestVote(context.Background(), req)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return response, err
 }
 
 func (t *RPCTransport) SendAppendEntries(
-	server Server, req *AppendEntriesRequest, resp *AppendEntriesResponse) error {
+	server Server, req *pb.AppendEntriesRequest) (*pb.AppendEntriesResponse, error) {
 
-	client, err := rpc.Dial("tcp", string(server.ServerAddress))
-	if err != nil {
-		return err
+	clientPool, ok := t.clientPool.Load(string(server.ServerAddress))
+	if !ok {
+		p, err := pool.New(string(server.ServerAddress), pool.DefaultOptions)
+		if err != nil {
+			t.logger.Fatalf("failed to new pool: %v", err)
+		}
+		t.clientPool.Store(string(server.ServerAddress), p)
+		clientPool = p
 	}
+	conn, err := clientPool.(pool.Pool).Get()
+	if err != nil {
+		t.logger.Fatalf("failed to get conn: %v", err)
+	}
+	defer conn.Close()
 
-	err = client.Call("RPCTransport.AppendEntries", req, resp)
+	client := pb.NewRaftClient(conn.Value())
+	response, err := client.AppendEntries(context.Background(), req)
 	if err != nil {
-		return err
+		t.logger.Warning(err)
 	}
-	return nil
+	return response, err
 }
 
 func (t *RPCTransport) waitResponse(req interface{}, resp interface{}) {
@@ -97,12 +126,14 @@ func (t *RPCTransport) waitResponse(req interface{}, resp interface{}) {
 	<-waitCh
 }
 
-func (t *RPCTransport) RequestVote(req *RequestVoteRequest, resp *RequestVoteResponse) error {
-	t.waitResponse(req, resp)
-	return nil
+func (t *RPCTransport) RequestVote(ctx context.Context, request *pb.RequestVoteRequest) (*pb.RequestVoteResponse, error) {
+	resp := &pb.RequestVoteResponse{}
+	t.waitResponse(request, resp)
+	return resp, nil
 }
 
-func (t *RPCTransport) AppendEntries(req *AppendEntriesRequest, resp *AppendEntriesResponse) error {
-	t.waitResponse(req, resp)
-	return nil
+func (t *RPCTransport) AppendEntries(ctx context.Context, request *pb.AppendEntriesRequest) (*pb.AppendEntriesResponse, error) {
+	resp := &pb.AppendEntriesResponse{}
+	t.waitResponse(request, resp)
+	return resp, nil
 }

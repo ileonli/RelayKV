@@ -1,20 +1,14 @@
 package raft
 
 import (
+	"RelayKV/raft/pb"
 	"errors"
 	"fmt"
 	"sync"
 )
 
-// Entry used to store log.
-type Entry struct {
-	Index uint64
-	Term  uint64
-	Date  interface{}
-}
-
 // EntryStore is used to provide an interface for storing
-// and retrieving logs in a durable fashion.
+// and retrieving logStore in a durable fashion.
 type EntryStore interface {
 	// FirstIndex returns the first Entry's Index. 0 for no entries.
 	FirstIndex() (uint64, error)
@@ -23,19 +17,19 @@ type EntryStore interface {
 	LastIndex() (uint64, error)
 
 	// FirstEntry returns the first Entry. nil for no entries.
-	FirstEntry() (*Entry, error)
+	FirstEntry() (*pb.Entry, error)
 
 	// LastEntry returns the last Entry. nil for no entries.
-	LastEntry() (*Entry, error)
+	LastEntry() (*pb.Entry, error)
 
 	// GetEntry gets a log entry at a given index.
-	GetEntry(index uint64) (*Entry, error)
+	GetEntry(index uint64) (*pb.Entry, error)
 
 	// StoreEntry stores a log entry.
-	StoreEntry(entry *Entry) error
+	StoreEntry(entry *pb.Entry) error
 
 	// StoreEntries stores multiple log entries.
-	StoreEntries(entries []*Entry) error
+	StoreEntries(entries []*pb.Entry) error
 
 	// DeleteRange deletes a range of log entries. The range is [min, max].
 	// If min == max, delete the entry at min index.
@@ -45,13 +39,13 @@ type EntryStore interface {
 type InMemoryEntryStore struct {
 	mu sync.RWMutex
 
-	entries []*Entry
+	entries []*pb.Entry
 }
 
 func NewInMemoryEntryStore() *InMemoryEntryStore {
 	return &InMemoryEntryStore{
-		entries: []*Entry{
-			{Index: 0, Term: 0, Date: nil},
+		entries: []*pb.Entry{
+			{Index: 0, Term: 0, Data: nil},
 		},
 	}
 }
@@ -72,7 +66,7 @@ func (s *InMemoryEntryStore) LastIndex() (uint64, error) {
 	return s.entries[n-1].Index, nil
 }
 
-func (s *InMemoryEntryStore) FirstEntry() (*Entry, error) {
+func (s *InMemoryEntryStore) FirstEntry() (*pb.Entry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -82,7 +76,7 @@ func (s *InMemoryEntryStore) FirstEntry() (*Entry, error) {
 	return s.entries[1], nil
 }
 
-func (s *InMemoryEntryStore) LastEntry() (*Entry, error) {
+func (s *InMemoryEntryStore) LastEntry() (*pb.Entry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -93,7 +87,7 @@ func (s *InMemoryEntryStore) LastEntry() (*Entry, error) {
 	return s.entries[entriesLen-1], nil
 }
 
-func (s *InMemoryEntryStore) GetEntry(index uint64) (*Entry, error) {
+func (s *InMemoryEntryStore) GetEntry(index uint64) (*pb.Entry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -105,11 +99,11 @@ func (s *InMemoryEntryStore) GetEntry(index uint64) (*Entry, error) {
 	return s.entries[index], nil
 }
 
-func (s *InMemoryEntryStore) StoreEntry(entry *Entry) error {
-	return s.StoreEntries([]*Entry{entry})
+func (s *InMemoryEntryStore) StoreEntry(entry *pb.Entry) error {
+	return s.StoreEntries([]*pb.Entry{entry})
 }
 
-func (s *InMemoryEntryStore) StoreEntries(entries []*Entry) error {
+func (s *InMemoryEntryStore) StoreEntries(entries []*pb.Entry) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

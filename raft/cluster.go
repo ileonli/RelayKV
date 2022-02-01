@@ -30,7 +30,7 @@ func (c *Cluster) size() uint64 {
 }
 
 func (c *Cluster) quorum() uint64 {
-	return uint64(len(*c))
+	return uint64(len(*c)) / 2
 }
 
 func (c *Cluster) at(index uint64) Server {
@@ -40,12 +40,12 @@ func (c *Cluster) at(index uint64) Server {
 	return (*c)[index]
 }
 
-func (c *Cluster) visit(f func(s Server), sync bool) {
-	for i := uint64(0); i < c.size(); i++ {
-		if sync {
-			go f(c.at(i))
+func (c *Cluster) visit(f func(s Server), async bool) {
+	for _, server := range *c {
+		if async {
+			go f(server)
 		} else {
-			f(c.at(i))
+			f(server)
 		}
 	}
 }

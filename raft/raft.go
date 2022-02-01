@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"RelayKV/raft/pb"
 	"sync"
 	"time"
 )
@@ -16,8 +17,8 @@ type Raft struct {
 	logger Logger
 	trans  Transport
 
-	logs    EntryStore
-	persist PersistStore
+	logStore     EntryStore
+	persistStore PersistStore
 
 	electronTimer *time.Timer
 
@@ -46,7 +47,7 @@ func (r *Raft) becomeLeader() {
 	r.setVoteFor(NoneID)
 	r.setLeaderID(NoneID)
 
-	lastIndex, _ := r.logs.LastIndex()
+	lastIndex, _ := r.logStore.LastIndex()
 	r.cluster.visit(func(s Server) {
 		r.followerLogState.setNextAndMatchIndex(
 			s.ServerID, lastIndex+1, 0)
@@ -79,7 +80,7 @@ func (r *Raft) stepFollower() {
 			r.processRPC(rpc)
 
 		case <-r.electronTimer.C:
-			r.logger.Infof("%v electron timeout, become Follower", r.me())
+			r.logger.Infof("%v electron timeout, become Candidate", r.me())
 			r.becomeCandidate()
 
 		case <-r.shutdownCh:
@@ -129,7 +130,7 @@ func (r *Raft) stepCandidate() {
 			}
 
 		case <-timer:
-			r.logger.Warningf("campaign timeout, restart")
+			r.logger.Warningf("%v campaign timeout, restart", r.me())
 			return
 
 		case <-r.shutdownCh:
@@ -230,8 +231,8 @@ func (r *Raft) resetElectronTimer() {
 
 type campaignReq struct {
 	id   ServerID
-	req  *RequestVoteRequest
-	resp *RequestVoteResponse
+	req  *pb.RequestVoteRequest
+	resp *pb.RequestVoteResponse
 }
 
 func (r *Raft) campaign() <-chan *campaignReq {
@@ -245,20 +246,19 @@ func (r *Raft) campaign() <-chan *campaignReq {
 	lastIndex, lastTerm := r.getLastLog()
 
 	f := func(s Server) {
-		if s == r.me() {
+		if s.ServerAddress == r.me().ServerAddress {
 			return
 		}
-		req := &RequestVoteRequest{
+		req := &pb.RequestVoteRequest{
 			Term:         term,
-			CandidateId:  CandidateId,
+			CandidateId:  uint64(CandidateId),
 			LastLogIndex: lastIndex,
 			LastLogTerm:  lastTerm,
 		}
-		resp := &RequestVoteResponse{}
 		if r.getState() == Candidate {
-			err := r.trans.SendRequestVote(s, req, resp)
+			resp, err := r.trans.SendRequestVote(s, req)
 			if err != nil {
-				r.logger.Warningf("%v fail to send RequestVote: %v", r.me(), err)
+				r.logger.Warningf("%v fail to send RequestVote to %v", r.me(), s)
 				return
 			}
 			campaignRes <- &campaignReq{s.ServerID, req, resp}
@@ -272,8 +272,8 @@ func (r *Raft) campaign() <-chan *campaignReq {
 
 type heartbeatRes struct {
 	id   ServerID
-	req  *AppendEntriesRequest
-	resp *AppendEntriesResponse
+	req  *pb.AppendEntriesRequest
+	resp *pb.AppendEntriesResponse
 }
 
 func (r *Raft) heartbeat(c chan *heartbeatRes) {
@@ -283,7 +283,7 @@ func (r *Raft) heartbeat(c chan *heartbeatRes) {
 	leaderId := r.me().ServerID
 
 	f := func(s Server) {
-		if s == r.me() {
+		if s.ServerAddress == r.me().ServerAddress {
 			return
 		}
 
@@ -300,19 +300,18 @@ func (r *Raft) heartbeat(c chan *heartbeatRes) {
 
 		r.mu.Unlock()
 
-		req := &AppendEntriesRequest{
+		req := &pb.AppendEntriesRequest{
 			Term:         term,
-			LeaderId:     leaderId,
+			LeaderId:     uint64(leaderId),
 			PrevLogIndex: prevLogIndex,
 			PrevLogTerm:  prevLogTerm,
 			LeaderCommit: commitIndex,
 			Entries:      entries,
 		}
-		resp := &AppendEntriesResponse{}
 		if r.getState() == Leader {
-			err := r.trans.SendAppendEntries(s, req, resp)
+			resp, err := r.trans.SendAppendEntries(s, req)
 			if err != nil {
-				r.logger.Warningf("%v fail to send RequestVote: %v", r.me(), err)
+				r.logger.Warningf("%v fail to send heartbeat to %v", r.me(), s)
 				return
 			}
 
@@ -325,16 +324,16 @@ func (r *Raft) heartbeat(c chan *heartbeatRes) {
 
 func (r *Raft) processRPC(rpc *RPC) {
 	switch cmd := rpc.Command.(type) {
-	case *AppendEntriesRequest:
+	case *pb.AppendEntriesRequest:
 		r.doAppendEntries(rpc, cmd)
-	case *RequestVoteRequest:
+	case *pb.RequestVoteRequest:
 		r.doRequestVote(rpc, cmd)
 	default:
 		panic("Unknown")
 	}
 }
 
-func (r *Raft) doRequestVote(rpc *RPC, req *RequestVoteRequest) {
+func (r *Raft) doRequestVote(rpc *RPC, req *pb.RequestVoteRequest) {
 	defer func() {
 		if r.getState() == Follower {
 			r.resetElectronTimer()
@@ -342,7 +341,7 @@ func (r *Raft) doRequestVote(rpc *RPC, req *RequestVoteRequest) {
 		rpc.Respond()
 	}()
 
-	resp := rpc.Response.(*RequestVoteResponse)
+	resp := rpc.Response.(*pb.RequestVoteResponse)
 	resp.Term = r.getCurrentTerm()
 	resp.VoteGranted = false
 
@@ -389,7 +388,7 @@ func (r *Raft) doRequestVote(rpc *RPC, req *RequestVoteRequest) {
 	resp.VoteGranted = true
 }
 
-func (r *Raft) doAppendEntries(rpc *RPC, req *AppendEntriesRequest) {
+func (r *Raft) doAppendEntries(rpc *RPC, req *pb.AppendEntriesRequest) {
 	defer func() {
 		if r.serverState.getState() == Follower {
 			r.resetElectronTimer()
@@ -397,7 +396,7 @@ func (r *Raft) doAppendEntries(rpc *RPC, req *AppendEntriesRequest) {
 		rpc.Respond()
 	}()
 
-	resp := rpc.Response.(*AppendEntriesResponse)
+	resp := rpc.Response.(*pb.AppendEntriesResponse)
 	resp.Term = r.serverState.getCurrentTerm()
 	resp.Success = false
 
@@ -424,7 +423,7 @@ func (r *Raft) doAppendEntries(rpc *RPC, req *AppendEntriesRequest) {
 		if lastIndex == req.PrevLogIndex {
 			prevLogTerm = lastTerm
 		} else {
-			prevLog, err := r.logs.GetEntry(req.PrevLogIndex)
+			prevLog, err := r.logStore.GetEntry(req.PrevLogIndex)
 			if err != nil {
 				// follower does not have PrevLogIndex in its log
 				resp.ConflictIndex = lastIndex
@@ -440,11 +439,11 @@ func (r *Raft) doAppendEntries(rpc *RPC, req *AppendEntriesRequest) {
 			r.logger.Infof("%v previous log term mis-match ours: %v remote: %v id: %v",
 				r.me(), prevLogTerm, req.PrevLogTerm, req.LeaderId)
 
-			prevLog, _ := r.logs.GetEntry(req.PrevLogIndex)
+			prevLog, _ := r.logStore.GetEntry(req.PrevLogIndex)
 
 			isFindEqualTerm := false
 			for index := prevLog.Index; index > 0; index-- {
-				entry, err := r.logs.GetEntry(index)
+				entry, err := r.logStore.GetEntry(index)
 				if err != nil {
 					panic(err)
 				}
@@ -464,16 +463,16 @@ func (r *Raft) doAppendEntries(rpc *RPC, req *AppendEntriesRequest) {
 
 	if len(req.Entries) > 0 {
 		lastIndex, _ := r.getLastLog()
-		var newEntries []*Entry
+		var newEntries []*pb.Entry
 		for i, entry := range req.Entries {
 			if entry.Index > lastIndex {
 				for j := i; j < len(req.Entries); j++ {
-					newEntries = append(newEntries, &req.Entries[j])
+					newEntries = append(newEntries, req.Entries[j])
 				}
 				break
 			}
 
-			storeEntry, err := r.logs.GetEntry(entry.Index)
+			storeEntry, err := r.logStore.GetEntry(entry.Index)
 			if err != nil {
 				r.logger.Infof("%v failed to get log entry index: %v error: %v",
 					r.me(), entry.Index, err)
@@ -483,11 +482,11 @@ func (r *Raft) doAppendEntries(rpc *RPC, req *AppendEntriesRequest) {
 			if entry.Term != storeEntry.Term {
 				r.logger.Infof("%v clearing log suffix from: %v to: %v",
 					r.me(), entry.Index, lastIndex)
-				if err := r.logs.DeleteRange(entry.Index, lastIndex); err != nil {
+				if err := r.logStore.DeleteRange(entry.Index, lastIndex); err != nil {
 					panic(err)
 				}
 				for j := i; j < len(req.Entries); j++ {
-					newEntries = append(newEntries, &req.Entries[j])
+					newEntries = append(newEntries, req.Entries[j])
 				}
 				break
 			}
@@ -495,7 +494,7 @@ func (r *Raft) doAppendEntries(rpc *RPC, req *AppendEntriesRequest) {
 
 		if n := len(newEntries); n > 0 {
 			r.logger.Infof("%v store entries: %#v", r.me(), len(newEntries))
-			err := r.logs.StoreEntries(newEntries)
+			err := r.logStore.StoreEntries(newEntries)
 			if err != nil {
 				panic(err)
 			}
@@ -504,7 +503,7 @@ func (r *Raft) doAppendEntries(rpc *RPC, req *AppendEntriesRequest) {
 
 	commitIndex := r.getCommitIndex()
 	if req.LeaderCommit > 0 && req.LeaderCommit > commitIndex {
-		index, err := r.logs.LastIndex()
+		index, err := r.logStore.LastIndex()
 		if err != nil {
 			panic(err)
 		}

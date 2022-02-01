@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package pb;
+
+option go_package = "github.com/relaykv/raft/pb";
+
+message Entry {
+  uint64 Index = 1;
+  uint64 Term = 2;
+  bytes  Data = 3;
+}
+
+message RequestVoteRequest {
+  uint64 Term = 1;
+  uint64 CandidateId = 2;
+
+  uint64 LastLogIndex = 3;
+  uint64 LastLogTerm = 4;
+}
+
+message RequestVoteResponse {
+  uint64 Term = 1;
+  bool   VoteGranted = 2;
+}
+
+message AppendEntriesRequest {
+  uint64 Term = 1;
+  uint64 LeaderId = 2;
+
+  uint64 PrevLogIndex = 3;
+  uint64 PrevLogTerm = 4;
+  uint64 LeaderCommit = 5;
+
+  repeated Entry Entries = 6;
+}
+
+message AppendEntriesResponse  {
+  uint64 Term = 1;
+  bool   Success = 2;
+  uint64 ConflictIndex = 3;
+}
+
+service Raft {
+  rpc RequestVote (RequestVoteRequest) returns (RequestVoteResponse) {}
+  rpc AppendEntries (AppendEntriesRequest) returns (AppendEntriesResponse) {}
+}

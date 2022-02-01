@@ -13,7 +13,7 @@ func (r *Raft) runFSM() {
 		case <-r.commitCh:
 			applied, committed := r.getLastApplied()+1, r.getCommitIndex()
 			for ; applied <= committed; applied++ {
-				entry, err := r.logs.GetEntry(applied)
+				entry, err := r.logStore.GetEntry(applied)
 				if err != nil {
 					panic(err)
 				}
