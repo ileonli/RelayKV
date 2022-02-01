@@ -108,7 +108,7 @@ func (t *RPCTransport) SendAppendEntries(
 	client := pb.NewRaftClient(conn.Value())
 	response, err := client.AppendEntries(context.Background(), req)
 	if err != nil {
-		t.logger.Warning(err)
+		return nil, err
 	}
 	return response, err
 }
