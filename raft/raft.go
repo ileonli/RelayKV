@@ -34,12 +34,16 @@ func (r *Raft) becomeFollower() {
 	r.setState(Follower)
 	r.setLeaderID(NoneID)
 	r.setVoteFor(NoneID)
+
+	r.logger.Infof("%v become Follower", r.leaderID)
 }
 
 func (r *Raft) becomeCandidate() {
 	r.serverState.setState(Candidate)
 	r.serverState.setLeaderID(NoneID)
 	r.serverState.setVoteFor(r.serverState.me())
+
+	r.logger.Infof("%v become Candidate", r.leaderID)
 }
 
 func (r *Raft) becomeLeader() {
@@ -52,6 +56,8 @@ func (r *Raft) becomeLeader() {
 		r.followerLogState.setNextAndMatchIndex(
 			s.ServerID, lastIndex+1, 0)
 	}, false)
+
+	r.logger.Infof("%v become Leader", r.leaderID)
 }
 
 func (r *Raft) step() {
@@ -154,9 +160,6 @@ func (r *Raft) stepLeader() {
 			id := heartbeatResp.id
 			req := heartbeatResp.req
 			resp := heartbeatResp.resp
-
-			r.logger.Infof("%v receive heartbeat request: %v response: %v from id: %v",
-				r.me(), req, resp, id)
 
 			if r.getState() != Leader {
 				r.logger.Warningf("%v is not a leader, ignore the appendEntries resp: %v", r.me(), resp)
@@ -289,8 +292,8 @@ func (r *Raft) heartbeat(c chan *heartbeatRes) {
 
 		r.mu.Lock()
 
-		nextIndex := r.followerLogState.getNextIndex(leaderId)
-		prevLogIndex, prevLogTerm := r.getPrevLog(leaderId)
+		nextIndex := r.followerLogState.getNextIndex(s.ServerID)
+		prevLogIndex, prevLogTerm := r.getPrevLog(s.ServerID)
 
 		startIndex := nextIndex
 		if startIndex == 0 {
