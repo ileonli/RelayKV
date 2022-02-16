@@ -25,6 +25,17 @@ func (s Server) String() string {
 
 type Cluster []Server
 
+func NewCluster(address []string) Cluster {
+	var clusters Cluster
+	for id, add := range address {
+		clusters = append(clusters, Server{
+			ServerID:      ServerID(id),
+			ServerAddress: ServerAddress(add),
+		})
+	}
+	return clusters
+}
+
 func (c *Cluster) size() uint64 {
 	return uint64(len(*c))
 }
