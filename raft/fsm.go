@@ -5,6 +5,7 @@ func (r *Raft) notifyCommit() {
 }
 
 type ApplyMsg struct {
+	Data []byte
 }
 
 func (r *Raft) runFSM() {
@@ -19,9 +20,10 @@ func (r *Raft) runFSM() {
 				}
 				r.logger.Infof("%v apply: %v", r.me(), entry)
 				r.applyCh <- &ApplyMsg{
-					// TODO finish apply message
+					entry.Data,
 				}
 			}
+			r.setLastApplied(committed)
 		}
 	}
 }

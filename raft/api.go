@@ -1,6 +1,8 @@
 package raft
 
 import (
+	"RelayKV/raft/pb"
+	"encoding/json"
 	"time"
 )
 
@@ -40,7 +42,7 @@ func NewRaft(
 		heartbeatTimeout: c.HeartbeatTimeout,
 		rpcCh:            trans.Consume(),
 		applyCh:          applyCh,
-		commitCh:         make(chan struct{}),
+		commitCh:         make(chan struct{}, 1),
 		shutdownCh:       make(chan struct{}),
 	}
 
@@ -48,4 +50,41 @@ func NewRaft(
 	go rf.runFSM()
 
 	return rf
+}
+
+func (r *Raft) GetState() State {
+	return r.getState()
+}
+
+func (r *Raft) GetTerm() uint64 {
+	return r.getCurrentTerm()
+}
+
+func (r *Raft) GetLeaderId() uint64 {
+	return uint64(r.getLeaderID())
+}
+
+func (r *Raft) Start(command interface{}) (uint64, uint64, bool) {
+	isLeader := r.getState() == Leader
+	if !isLeader {
+		return 0, 0, false
+	}
+
+	bytes, err := json.Marshal(command)
+	if err != nil {
+		panic(err)
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	term := r.getCurrentTerm()
+	lastIndex, _ := r.getLastLog()
+	entry := &pb.Entry{Index: lastIndex + 1, Term: term, Data: bytes}
+	if err := r.logStore.StoreEntry(entry); err != nil {
+		panic(err)
+	}
+	r.followerLogState.setNextIndex(r.me().ServerID, entry.Index+1)
+	r.followerLogState.setNextAndMatchIndex(r.me().ServerID, entry.Index+1, entry.Index)
+	return entry.Index, entry.Term, isLeader
 }

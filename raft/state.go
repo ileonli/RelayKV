@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"sort"
 	"sync"
 	"sync/atomic"
 )
@@ -175,15 +176,21 @@ func (p *followerLogState) setNextAndMatchIndex(id ServerID, nextIndex, matchInd
 	p.matchIndex[id] = matchIndex
 }
 
-func (p *followerLogState) getBiggerOrEqualMatchNum(index uint64) uint64 {
+type Uint64Slice []uint64
+
+func (u Uint64Slice) Len() int           { return len(u) }
+func (u Uint64Slice) Less(i, j int) bool { return u[i] < u[j] }
+func (u Uint64Slice) Swap(i, j int)      { u[i], u[j] = u[j], u[i] }
+
+func (p *followerLogState) getMostAgreeMatchIndex() uint64 {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	cnt := 0
-	for _, matchIndex := range p.matchIndex {
-		if matchIndex >= index {
-			cnt++
-		}
-	}
-	return uint64(cnt)
+	n := len(p.matchIndex)
+	newMatchIndex := make(Uint64Slice, n)
+	copy(newMatchIndex, p.matchIndex)
+
+	sort.Sort(newMatchIndex)
+
+	return newMatchIndex[n/2]
 }

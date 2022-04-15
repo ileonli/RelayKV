@@ -200,12 +200,11 @@ func (r *Raft) stepLeader() {
 
 				r.logger.Infof("%v success replicate to id: %v", r.me(), id)
 
-				if r.followerLogState.getBiggerOrEqualMatchNum(newMatchIndex) > r.cluster.quorum() {
-					if r.getCommitIndex() < newMatchIndex {
-						r.setCommitIndex(newMatchIndex)
-						r.logger.Infof("%v set current commitIndex: %d", r.me(), r.getCommitIndex())
-						r.notifyCommit()
-					}
+				maxMatchIndex := r.followerLogState.getMostAgreeMatchIndex()
+				if r.getCommitIndex() < maxMatchIndex {
+					r.setCommitIndex(maxMatchIndex)
+					r.logger.Infof("set current commitIndex: %d", r.getCommitIndex())
+					r.notifyCommit()
 				}
 
 				r.mu.Unlock()
