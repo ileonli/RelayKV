@@ -6,6 +6,7 @@ import (
 	"github.com/shimingyah/pool"
 	"google.golang.org/grpc"
 	"net"
+	"strings"
 	"sync"
 )
 
@@ -42,7 +43,8 @@ func NewRPCTransport(address ServerAddress, logger Logger) *RPCTransport {
 	}
 
 	go func() {
-		server, err := net.Listen("tcp", string(address))
+		splits := strings.Split(string(address), ":")
+		server, err := net.Listen("tcp", "0.0.0.0:"+splits[1])
 		if err != nil {
 			panic(err)
 		}

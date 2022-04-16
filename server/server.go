@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strings"
 )
 
 func cors() gin.HandlerFunc {
@@ -79,7 +80,8 @@ func NewHttpService(httpAddress string, s *KVServer) {
 		s.Delete(key)
 	})
 
-	if err := r.Run(httpAddress); err != nil {
+	splits := strings.Split(httpAddress, ":")
+	if err := r.Run("0.0.0.0:" + splits[1]); err != nil {
 		panic(err)
 	}
 }
